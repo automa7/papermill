@@ -10,6 +10,103 @@ from .engines import papermill_engines
 from .utils import chdir
 from .parameterize import parameterize_notebook, parameterize_path, add_builtin_parameters
 
+def execute_notebook_in_mem(
+    nb,
+    parameters=None,
+    engine_name=None,
+    request_save_on_cell_execute=True,
+    prepare_only=False,
+    kernel_name=None,
+    progress_bar=True,
+    log_output=False,
+    stdout_file=None,
+    stderr_file=None,
+    start_timeout=60,
+    report_mode=False,
+    cwd=None,
+    **engine_kwargs
+):
+    """Executes a single notebook locally.
+
+    Parameters
+    ----------
+    nb : str
+        A NotebookNode object
+    parameters : dict, optional
+        Arbitrary keyword arguments to pass to the notebook parameters
+    engine_name : str, optional
+        Name of execution engine to use
+    request_save_on_cell_execute : bool, optional
+        Request save notebook after each cell execution
+    autosave_cell_every : int, optional
+        How often in seconds to save in the middle of long cell executions
+    prepare_only : bool, optional
+        Flag to determine if execution should occur or not
+    kernel_name : str, optional
+        Name of kernel to execute the notebook against
+    progress_bar : bool, optional
+        Flag for whether or not to show the progress bar.
+    log_output : bool, optional
+        Flag for whether or not to write notebook output to the configured logger
+    start_timeout : int, optional
+        Duration in seconds to wait for kernel start-up
+    report_mode : bool, optional
+        Flag for whether or not to hide input.
+    cwd : str, optional
+        Working directory to use when executing the notebook
+    **kwargs
+        Arbitrary keyword arguments to pass to the notebook engine
+
+    Returns
+    -------
+    nb : NotebookNode
+       Executed notebook object
+    """
+    # path_parameters = add_builtin_parameters(parameters)
+    # input_path = parameterize_path(input_path, path_parameters)
+    # output_path = parameterize_path(output_path, path_parameters)
+
+    # logger.info("Input Notebook:  %s" % get_pretty_path(input_path))
+    # logger.info("Output Notebook: %s" % get_pretty_path(output_path))
+    
+    with local_file_io_cwd():
+        if cwd is not None:
+            logger.info("Working directory: {}".format(get_pretty_path(cwd)))
+
+        # Parameterize the Notebook.
+        if parameters:
+            nb = parameterize_notebook(nb, parameters, report_mode)
+
+        # TODO: turn input_path and output_path optional
+        nb = prepare_notebook_metadata(nb, input_path, output_path, report_mode)
+
+        if not prepare_only:
+            # Fetch the kernel name if it's not supplied
+            kernel_name = kernel_name or nb.metadata.kernelspec.name
+
+            # Execute the Notebook in `cwd` if it is set
+            # TODO: change function execute_notebook_with_engine for optional input and output
+            with chdir(cwd):
+                nb = papermill_engines.execute_notebook_with_engine(
+                    engine_name,
+                    nb,
+                    input_path=input_path,
+                    output_path=output_path if request_save_on_cell_execute else None,
+                    kernel_name=kernel_name,
+                    progress_bar=progress_bar,
+                    log_output=log_output,
+                    start_timeout=start_timeout,
+                    stdout_file=stdout_file,
+                    stderr_file=stderr_file,
+                    **engine_kwargs
+                )
+
+            # Check for errors first (it saves on error before raising)
+            # TODO: turn output_path optional
+            raise_for_execution_errors(nb, output_path)
+
+        return nb
+
 
 def execute_notebook(
     input_path,
